@@ -20,6 +20,9 @@ import { hexBeamTemplate } from "./hex-beam";
 import { fanDipoleTemplate } from "./fan-dipole";
 import { offCenterFedTemplate } from "./off-center-fed";
 import { magneticLoopTemplate } from "./magnetic-loop";
+import { elevatedQuarterwaveTemplate } from "./elevated-quarterwave";
+import { loopCounterpoiseVerticalTemplate } from "./loop-counterpoise-vertical";
+import { parasiticVerticalTemplate } from "./parasitic-vertical";
 
 /** All available templates, in display order */
 export const templates: AntennaTemplate[] = [
@@ -28,6 +31,8 @@ export const templates: AntennaTemplate[] = [
   invertedVTemplate,
   offCenterFedTemplate,
   // Verticals
+  elevatedQuarterwaveTemplate,
+  loopCounterpoiseVerticalTemplate,
   verticalTemplate,
   jPoleTemplate,
   slimJimTemplate,
@@ -45,6 +50,7 @@ export const templates: AntennaTemplate[] = [
   moxonTemplate,
   hexBeamTemplate,
   logPeriodicTemplate,
+  parasiticVerticalTemplate,
 ];
 
 /** Map from template ID to template */

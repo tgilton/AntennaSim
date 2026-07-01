@@ -48,6 +48,8 @@ export interface ParameterDef {
   defaultValue: number;
   /** Number of decimal places to display */
   decimals?: number;
+  /** Label shown instead of the numeric value when value === 0 (e.g. "Auto (λ/4)") */
+  zeroLabel?: string;
 }
 
 /** Generated wire geometry for NEC2 simulation */

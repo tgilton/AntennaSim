@@ -15,6 +15,8 @@ interface SliderProps {
   unit: string;
   decimals?: number;
   description?: string;
+  /** Shown instead of the numeric value when value === 0 */
+  zeroLabel?: string;
   onChange: (value: number) => void;
 }
 
@@ -43,6 +45,7 @@ export function Slider({
   unit,
   decimals = 1,
   description,
+  zeroLabel,
   onChange,
 }: SliderProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -99,7 +102,7 @@ export function Slider({
     [handleEditCommit]
   );
 
-  const displayValue = localValue.toFixed(decimals);
+  const displayValue = (zeroLabel && localValue === 0) ? zeroLabel : localValue.toFixed(decimals);
 
   return (
     <div className="space-y-1">
@@ -134,7 +137,7 @@ export function Slider({
             title="Click to type a value"
           >
             {displayValue}
-            {unit && <span className="text-text-secondary ml-0.5">{unit}</span>}
+            {unit && !(zeroLabel && localValue === 0) && <span className="text-text-secondary ml-0.5">{unit}</span>}
           </button>
         )}
       </div>

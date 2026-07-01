@@ -75,6 +75,7 @@ export function ParameterPanel({
               unit={param.unit}
               decimals={param.decimals ?? 1}
               description={param.description}
+              zeroLabel={original.zeroLabel}
               onChange={handleChange(original.key, isMetricLength)}
             />
           );
