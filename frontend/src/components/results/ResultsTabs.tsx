@@ -3,7 +3,7 @@
  * Used in the right panel on desktop and results sheet on mobile.
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Tabs } from "../ui/Tabs";
 import { SWRChart } from "./SWRChart";
 import { ImpedanceChart } from "./ImpedanceChart";
@@ -45,6 +45,10 @@ export function ResultsPanel() {
   const matching = useUIStore((s) => s.matching);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Takeoff angle for azimuth pattern cut (null = auto from max-gain row)
+  const [azimuthElevation, setAzimuthElevation] = useState<number | null>(null);
+  const [azimuthElevationInput, setAzimuthElevationInput] = useState("");
 
   const handleTabChange = useCallback(
     (key: string) => setResultsTab(key as ResultsTab),
@@ -283,8 +287,38 @@ export function ResultsPanel() {
                   </h4>
                   {selectedFreqResult.pattern ? (
                     <div className="space-y-3">
+                      {/* Takeoff angle control for azimuth cut */}
+                      <div className="flex items-center gap-2 px-1">
+                        <label className="text-[10px] text-text-secondary font-mono shrink-0">
+                          Azimuth at elevation:
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={90}
+                          step={1}
+                          value={azimuthElevationInput}
+                          onChange={(e) => {
+                            setAzimuthElevationInput(e.target.value);
+                            const v = parseFloat(e.target.value);
+                            setAzimuthElevation(isNaN(v) ? null : Math.max(0, Math.min(90, v)));
+                          }}
+                          placeholder="auto"
+                          className="w-14 bg-background text-text-primary text-[10px] font-mono px-1.5 py-0.5 rounded border border-border outline-none text-center"
+                        />
+                        <span className="text-[10px] text-text-secondary font-mono">° above horizon</span>
+                        {azimuthElevation !== null && (
+                          <button
+                            onClick={() => { setAzimuthElevation(null); setAzimuthElevationInput(""); }}
+                            className="text-[10px] text-accent hover:text-text-primary font-mono underline ml-1"
+                          >
+                            auto
+                          </button>
+                        )}
+                      </div>
+
                       <ChartExpandable
-                        title="Azimuth Pattern (H-plane)"
+                        title={azimuthElevation !== null ? `Azimuth Pattern @ ${azimuthElevation}° elevation` : "Azimuth Pattern (auto takeoff angle)"}
                         expandedChildren={
                           <div className="w-full h-full flex items-center justify-center">
                             <PatternPolar
@@ -292,6 +326,7 @@ export function ResultsPanel() {
                               mode="azimuth"
                               size={500}
                               responsive
+                              fixedElevationDeg={azimuthElevation ?? undefined}
                             />
                           </div>
                         }
@@ -300,6 +335,7 @@ export function ResultsPanel() {
                           pattern={selectedFreqResult.pattern}
                           mode="azimuth"
                           size={180}
+                          fixedElevationDeg={azimuthElevation ?? undefined}
                         />
                       </ChartExpandable>
                       <ChartExpandable

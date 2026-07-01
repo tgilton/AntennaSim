@@ -16,31 +16,50 @@ import { useChartTheme } from "../../hooks/useChartTheme";
 
 interface PatternPolarProps {
   pattern: PatternData;
-  /** "azimuth" = horizontal plane (theta=max gain), "elevation" = vertical plane (phi=max gain) */
+  /** "azimuth" = horizontal plane cut, "elevation" = vertical plane cut */
   mode: "azimuth" | "elevation";
   /** Size in pixels (used for internal viewBox calculation) */
   size?: number;
   /** When true, SVG fills its container instead of using fixed pixel dimensions */
   responsive?: boolean;
+  /**
+   * For azimuth mode only: elevation angle in degrees from horizon at which to
+   * take the horizontal cut (0=horizon, positive=above horizon).
+   * If omitted, uses the theta row containing the global max gain (auto).
+   */
+  fixedElevationDeg?: number;
 }
 
 /** Extract a cut from the 2D gain array */
 export function extractCut(
   pattern: PatternData,
-  mode: "azimuth" | "elevation"
+  mode: "azimuth" | "elevation",
+  fixedElevationDeg?: number
 ): { angle: number; gain: number }[] {
   const { gain_dbi, theta_start, theta_step, theta_count, phi_start, phi_step, phi_count } = pattern;
 
   if (mode === "azimuth") {
-    // Find theta index with max gain for azimuth cut
-    let bestTheta = 0;
-    let bestGain = -Infinity;
-    for (let ti = 0; ti < theta_count; ti++) {
-      for (let pi = 0; pi < phi_count; pi++) {
-        const g = gain_dbi[ti]?.[pi] ?? -999;
-        if (g > bestGain) {
-          bestGain = g;
-          bestTheta = ti;
+    let thetaIdx: number;
+
+    if (fixedElevationDeg !== undefined) {
+      // Convert elevation above horizon (0°=horizon, 90°=zenith) to NEC2 theta (theta = elevation - 90)
+      const targetTheta = fixedElevationDeg - 90;
+      const clamped = Math.max(
+        theta_start,
+        Math.min(theta_start + (theta_count - 1) * theta_step, targetTheta)
+      );
+      thetaIdx = Math.max(0, Math.min(theta_count - 1, Math.round((clamped - theta_start) / theta_step)));
+    } else {
+      // Auto: find theta index containing the global max gain
+      let bestGain = -Infinity;
+      thetaIdx = 0;
+      for (let ti = 0; ti < theta_count; ti++) {
+        for (let pi = 0; pi < phi_count; pi++) {
+          const g = gain_dbi[ti]?.[pi] ?? -999;
+          if (g > bestGain) {
+            bestGain = g;
+            thetaIdx = ti;
+          }
         }
       }
     }
@@ -48,13 +67,13 @@ export function extractCut(
     const points: { angle: number; gain: number }[] = [];
     for (let pi = 0; pi < phi_count; pi++) {
       const phi = phi_start + pi * phi_step;
-      const gain = gain_dbi[bestTheta]?.[pi] ?? -999;
+      const gain = gain_dbi[thetaIdx]?.[pi] ?? -999;
       // NEC phi -> compass bearing so the trace lines up with the N/E/S/W
       // labels and the 3D viewport compass. Verified against polarToXY
       // (angle=0 -> N/top, 90 -> E/right) and a wire placed on the +X axis:
       // phi=0 must map to bearing=90 (east). bearing=90-phi satisfies that;
-      // a previous version of this formula, bearing=-90-phi, was off by 180
-      // (a mirrored N<->S, E<->W swap).
+      // the previously-merged bearing=-90-phi was off by 180 (a mirrored
+      // N<->S, E<->W swap).
       const bearing = ((90 - phi) % 360 + 360) % 360;
       points.push({ angle: bearing, gain });
     }
@@ -109,9 +128,39 @@ function polarToXY(
   };
 }
 
-export function PatternPolar({ pattern, mode, size = 200, responsive = false }: PatternPolarProps) {
+export function PatternPolar({ pattern, mode, size = 200, responsive = false, fixedElevationDeg }: PatternPolarProps) {
   const ct = useChartTheme();
-  const cut = useMemo(() => extractCut(pattern, mode), [pattern, mode]);
+  const cut = useMemo(
+    () => extractCut(pattern, mode, fixedElevationDeg),
+    [pattern, mode, fixedElevationDeg]
+  );
+
+  // Compute the actual elevation above horizon used for the azimuth cut (for display label).
+  // NEC2 theta convention: theta=0 is zenith, theta=-90 is horizon.
+  // Elevation above horizon = theta + 90.
+  const actualElevationDeg = useMemo(() => {
+    if (mode !== "azimuth") return null;
+    const { theta_start, theta_step, theta_count } = pattern;
+    let ti: number;
+    if (fixedElevationDeg !== undefined) {
+      const targetTheta = fixedElevationDeg - 90;
+      const clamped = Math.max(theta_start, Math.min(theta_start + (theta_count - 1) * theta_step, targetTheta));
+      ti = Math.max(0, Math.min(theta_count - 1, Math.round((clamped - theta_start) / theta_step)));
+    } else {
+      // Auto: find theta row containing global max gain
+      const { gain_dbi, phi_count } = pattern;
+      let bestGain = -Infinity;
+      ti = 0;
+      for (let t = 0; t < theta_count; t++) {
+        for (let pi = 0; pi < phi_count; pi++) {
+          const g = gain_dbi[t]?.[pi] ?? -999;
+          if (g > bestGain) { bestGain = g; ti = t; }
+        }
+      }
+    }
+    const thetaAtIndex = theta_start + ti * theta_step;
+    return thetaAtIndex + 90; // convert NEC2 theta → elevation above horizon
+  }, [pattern, mode, fixedElevationDeg]);
 
   const { minGain, maxGain } = useMemo(() => {
     let min = Infinity;
@@ -442,7 +491,9 @@ export function PatternPolar({ pattern, mode, size = 200, responsive = false }: 
       className="text-center shrink-0 pt-1"
       style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "9px", color: ct.tick }}
     >
-      {mode === "azimuth" ? "Azimuth (H)" : "Elevation (E)"}
+      {mode === "azimuth"
+        ? `Azimuth @ ${actualElevationDeg !== null ? actualElevationDeg.toFixed(0) : "?"}\u00B0 el${fixedElevationDeg === undefined ? " (auto)" : ""}`
+        : "Elevation (E-plane)"}
       {" | Max: "}
       {maxGain.toFixed(1)} dBi
       {beamwidthArcs ? ` | BW: ${beamwidthArcs.mainLobeBeamwidth.toFixed(0)}\u00B0` : ""}

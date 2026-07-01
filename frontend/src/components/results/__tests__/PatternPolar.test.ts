@@ -29,6 +29,62 @@ function makePattern(phiCount: number): PatternData {
   };
 }
 
+function makeMultiThetaPattern(): PatternData {
+  // theta -90..0 step 10 (elevation 0..90 above horizon), 4 phi points.
+  // Each theta row's gain is a unique marker (ti*100) so tests can confirm
+  // which row extractCut actually pulled from.
+  const theta_count = 10;
+  const phi_count = 4;
+  const gain_dbi = Array.from({ length: theta_count }, (_, ti) =>
+    Array.from({ length: phi_count }, () => ti * 100)
+  );
+  return {
+    theta_start: -90,
+    theta_step: 10,
+    theta_count,
+    phi_start: 0,
+    phi_step: 90,
+    phi_count,
+    gain_dbi,
+  };
+}
+
+describe("extractCut azimuth mode: fixedElevationDeg row selection", () => {
+  it("elevation=30 selects theta=-60 (row index 3)", () => {
+    const pattern = makeMultiThetaPattern();
+    const points = extractCut(pattern, "azimuth", 30);
+    expect(points.every((p) => p.gain === 300)).toBe(true);
+  });
+
+  it("elevation=0 (horizon) selects theta=-90 (row index 0)", () => {
+    const pattern = makeMultiThetaPattern();
+    const points = extractCut(pattern, "azimuth", 0);
+    expect(points.every((p) => p.gain === 0)).toBe(true);
+  });
+
+  it("elevation=90 (zenith) selects theta=0 (row index 9)", () => {
+    const pattern = makeMultiThetaPattern();
+    const points = extractCut(pattern, "azimuth", 90);
+    expect(points.every((p) => p.gain === 900)).toBe(true);
+  });
+
+  it("out-of-range elevation clamps to the nearest valid row instead of erroring", () => {
+    const pattern = makeMultiThetaPattern();
+    const tooHigh = extractCut(pattern, "azimuth", 150);
+    expect(tooHigh.every((p) => p.gain === 900)).toBe(true); // clamps to zenith row
+    const tooLow = extractCut(pattern, "azimuth", -50);
+    expect(tooLow.every((p) => p.gain === 0)).toBe(true); // clamps to horizon row
+  });
+
+  it("omitting fixedElevationDeg (auto) picks the row with the global max gain regardless of elevation", () => {
+    const pattern = makeMultiThetaPattern();
+    // Global max is row 9 (900) by construction; auto mode should find it
+    // even though it's the last row, not because of any elevation targeting.
+    const points = extractCut(pattern, "azimuth");
+    expect(points.every((p) => p.gain === 900)).toBe(true);
+  });
+});
+
 describe("extractCut azimuth mode: NEC phi -> compass bearing", () => {
   it("maps phi=0 to bearing=90 (east) -- matches a director on the +X axis peaking at phi=0", () => {
     const pattern = makePattern(4); // phis: 0, 90, 180, 270
