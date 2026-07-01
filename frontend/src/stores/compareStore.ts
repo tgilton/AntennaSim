@@ -7,13 +7,24 @@
 
 import { create } from "zustand";
 import type { SimulationResult } from "../api/nec";
+import type { GroundConfig, FrequencyRange, FrequencySegment } from "../templates/types";
 
-export interface SavedResult {
+export type CandidateMode = "simulator" | "editor";
+
+export interface SavedCandidate {
   id: string;
   label: string;
   timestamp: number;
+  mode: CandidateMode;
   result: SimulationResult;
   color: string;
+  ground: GroundConfig;
+  frequencyRange: FrequencyRange;
+  frequencySegments: FrequencySegment[];
+  simulator?: {
+    templateId: string;
+    params: Record<string, number>;
+  };
 }
 
 const COMPARE_COLORS = [
@@ -27,7 +38,7 @@ const COMPARE_COLORS = [
 
 interface CompareState {
   /** Saved simulation results for comparison */
-  savedResults: SavedResult[];
+  savedResults: SavedCandidate[];
   /** Whether compare mode is active */
   isComparing: boolean;
   /** Maximum saved results */
@@ -35,7 +46,19 @@ interface CompareState {
 
   // Actions
   /** Save current result for comparison */
-  saveResult: (result: SimulationResult, label?: string) => void;
+  saveResult: (
+    result: SimulationResult,
+    options: {
+      label?: string;
+      ground: GroundConfig;
+      frequencyRange: FrequencyRange;
+      frequencySegments?: FrequencySegment[];
+      simulator?: {
+        templateId: string;
+        params: Record<string, number>;
+      };
+    }
+  ) => void;
   /** Remove a saved result */
   removeResult: (id: string) => void;
   /** Clear all saved results */
@@ -51,7 +74,7 @@ export const useCompareStore = create<CompareState>((set) => ({
   isComparing: false,
   maxResults: 6,
 
-  saveResult: (result, label) => {
+  saveResult: (result, options) => {
     const id = `compare-${nextId++}`;
     set((s) => {
       const trimmed =
@@ -59,13 +82,27 @@ export const useCompareStore = create<CompareState>((set) => ({
           ? s.savedResults.slice(1)
           : s.savedResults;
       const colorIdx = trimmed.length % COMPARE_COLORS.length;
-      const saved: SavedResult = {
+
+      const saved: SavedCandidate = {
         id,
-        label: label ?? `Run ${nextId - 1}`,
+        label: options.label ?? `Run ${nextId - 1}`,
         timestamp: Date.now(),
+        mode: options.simulator ? "simulator" : "editor",
         result,
         color: COMPARE_COLORS[colorIdx]!,
+        ground: { ...options.ground },
+        frequencyRange: { ...options.frequencyRange },
+        frequencySegments: options.frequencySegments
+          ? options.frequencySegments.map((seg) => ({ ...seg }))
+          : [],
+        simulator: options.simulator
+          ? {
+              templateId: options.simulator.templateId,
+              params: { ...options.simulator.params },
+            }
+          : undefined,
       };
+
       return { savedResults: [...trimmed, saved] };
     });
   },

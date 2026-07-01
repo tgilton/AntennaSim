@@ -41,6 +41,7 @@ import type { AntennaTemplate, FrequencyRange } from "../templates/types";
 import { bandToSegment, hasBandSegment, removeBandSegment } from "../utils/ham-bands";
 import type { HamBand } from "../utils/ham-bands";
 import type { ViewToggles } from "../components/three/types";
+import { CompareOverlay } from "../components/results/CompareOverlay";
 
 /** Mobile bottom sheet tabs */
 const MOBILE_SEGMENTS = [
@@ -538,7 +539,14 @@ export function SimulatorPage() {
         {/* === RIGHT PANEL (desktop only) === */}
         <aside className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-border bg-surface overflow-hidden shrink-0">
           <ErrorBoundary label="Results">
-            <ResultsPanel />
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="p-2 border-b border-border shrink-0">
+                <CompareOverlay />
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ResultsPanel />
+              </div>
+            </div>
           </ErrorBoundary>
         </aside>
       </div>

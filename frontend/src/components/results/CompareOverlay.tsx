@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { useCompareStore } from "../../stores/compareStore";
 import { useSimulationStore } from "../../stores/simulationStore";
+import { useAntennaStore } from "../../stores/antennaStore";
 import { useChartTheme } from "../../hooks/useChartTheme";
 
 interface CompareOverlayProps {
@@ -33,13 +34,35 @@ export function CompareOverlay({ className = "" }: CompareOverlayProps) {
   const clearAll = useCompareStore((s) => s.clearAll);
 
   const currentResult = useSimulationStore((s) => s.result);
+  const template = useAntennaStore((s) => s.template);
+  const params = useAntennaStore((s) => s.params);
+  const ground = useAntennaStore((s) => s.ground);
+  const frequencyRange = useAntennaStore((s) => s.frequencyRange);
+  const frequencySegments = useAntennaStore((s) => s.frequencySegments);
   const ct = useChartTheme();
 
   const handleSave = useCallback(() => {
     if (currentResult) {
-      saveResult(currentResult);
+      saveResult(currentResult, {
+        label: template.nameShort,
+        ground,
+        frequencyRange,
+        frequencySegments,
+        simulator: {
+          templateId: template.id,
+          params,
+        },
+      });
     }
-  }, [currentResult, saveResult]);
+  }, [
+    currentResult,
+    saveResult,
+    template,
+    params,
+    ground,
+    frequencyRange,
+    frequencySegments,
+  ]);
 
   const handleToggle = useCallback(() => {
     setComparing(!isComparing);
