@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.2] - 2026-06-01
+
+### Fixed
+
+- README API reference documented the simulate request body with the wrong keys — `ground.type` (the API expects `ground_type`) and `excitations[].real`/`.imag` (the API expects `voltage_real`/`voltage_imag`). Submitting the documented payload silently fell back to default ground/voltage. Corrected the example to match the API (#61)
+
+### Changed
+
+- Simulate request models now reject unknown/misspelled fields with a 422 validation error instead of silently ignoring them and using defaults (e.g. `ground: { "type": ... }` now errors clearly instead of defaulting to average ground) (#61)
+- Reorganized documentation: trimmed the README to a quick-start front page and moved the detailed usage, development, deployment, and API guides into a new `docs/` folder with an index. Refreshed the landing page with live badges (stars, Docker pulls, Pages deploy), a value-prop hook, and a prominent "Launch the live demo" button
+
+## [1.2.1] - 2026-06-01
+
+### Fixed
+
+- Azimuth radiation pattern was rotated relative to the 3D viewport and compass — the polar plot drew NEC phi angles directly under the N/E/S/W labels, so a north-firing antenna appeared to point east. The azimuth cut now maps NEC phi to compass bearing so the trace lines up with the cardinal labels and the 3D viewport
+- -3 dB beamwidth was reported incorrectly (near 360°) for lobes pointing North after the azimuth orientation fix, because the main lobe straddles the 0°/360° seam and its span was measured with a plain min/max. Lobe angles are now unwrapped before the span is measured, restoring the correct beamwidth
+
+## [1.2.0] - 2026-05-30
+
+### Added
+
+- Transmission-line feeders (and other non-radiating structures) now render as dashed lines in the 3D viewport, in both the Simulator and the Wire Editor — so antennas whose feeders are modelled as transmission lines (G5RV, log-periodic) no longer show a feedpoint floating disconnected from the antenna
+
+### Changed
+
+- Antenna templates can now declare lumped loads (`generateLoads`) and multiple/phased excitations (`generateExcitation` may return an array), enabling antennas that need tuning capacitors or phased feeders. The Simulator now runs through the unified advanced engine path; existing single-excitation templates are unaffected (verified identical results)
+
+### Fixed
+
+- Moxon Rectangle template produced grossly oversized elements (~1 wavelength wide instead of ~0.37λ), causing SWR >99 across the band. Replaced the dimension formulas with L.B. Cebik's (W4RNL) MoxGen regression equations and corrected the full-width vs. half-width handling (#63)
+- End-Fed Half-Wave template stretched the radiating wire when the far-end height was changed (horizontal span was fixed at the half-wave length), making the conductor longer than λ/2 and shifting resonance below the band. The wire is now held at a fixed half-wave length and the far end tilts as a sloper, restoring resonance near the design frequency (SWR at design drops from ~3.9 to ~1.5 for the default 40m design)
+- Fan Dipole template was only usable on its lowest band — 20m and 10m showed very high SWR. Three issues: (1) every element shared a single center node with the source on the longest element, so only that dipole was driven differentially while the others hung off the feed as quasi-parasitic stubs; (2) applying the fan spread stretched each element beyond its resonant length; (3) the end-effect shortening placed the coupled elements above their bands. Now all left/right halves connect to two feed terminals bridged by the driven segment (every dipole is fed across its center), each arm stays a fixed length while the spread only tilts it, and the element length compensates for fan coupling. Verified with nec2c: 20m SWR ~14→2.3 and 10m ~27→1.9 at band center for the default design
+- Small Magnetic Loop template never resonated — it had no tuning capacitor and was fed directly (a directly-fed small loop is <1Ω, so SWR pegged near infinity). It now models a closed main loop with a series tuning capacitor (computed from the loop inductance) plus a fed Faraday coupling loop, with two controls: Coupling Loop Size (sets the feed resistance) and Capacitor Tuning (peaks resonance on frequency). Verified with nec2c: SWR ~500 → ~1.4 at resonance for the default design. Also corrected the feedpoint marker to use NEC coordinates
+- G5RV template modelled the 450Ω open-wire matching section as a single radiating wire, giving the wrong impedance (~99:1 SWR by default). It now models a single dipole wire fed at its center segment through a 450Ω transmission line (with the line's velocity factor applied to the electrical length) to a coax stub. Verified with nec2c: ~1.9:1 on 20m (the G5RV's design band) with realistic per-band behaviour elsewhere
+- Log-Periodic Dipole Array template only fed the front element, leaving the rest as floating parasitics — it was not a working LPDA. It now models the proper transposed phase-line feeder: a Carrel-designed feeder characteristic impedance, crossed (transposed) transmission lines between element centers, a shorted rear termination stub, and an element range extended past both band edges. Verified with nec2c: ~11 dBi forward gain and SWR mostly under 2 across 14–30 MHz. Also relaxed the backend transmission-line impedance constraint to allow a negative characteristic impedance, which is NEC's convention for a crossed/transposed line
+- Wire Editor: transmission-line and lumped-load segment references now scale with the wire when a design-frequency change re-segments it (previously only excitations were scaled), keeping a loaded G5RV/LPDA feeder valid for simulation and fixing the feeder dashed line rendering at the wrong angle. The viewport also defensively clamps a stale segment reference onto the wire
+
+## [1.1.1] - 2026-04-30
+
+### Fixed
+
+- Hang wire tool not applying the default +1m length unless manually edited
+
+## [1.1.0] - 2026-04-30
+
+### Added
+
+- Editable wire length field in Wire Editor properties panel and wire table
+- Length lock toggle to maintain wire length during 3D endpoint drags
+- Bend Wire tool to split a straight wire into equal-length segments at a configurable angle while preserving total length
+- Hang Wire tool to simulate catenary sag between wire endpoints with adjustable wire length and segment count
+- Blender-style axis constraints: press X/Y/Z during drag to lock to that axis, Shift+X/Y/Z to exclude an axis, with colored axis indicator lines
+- Multi-wire move: dragging one wire in a multi-selection moves all selected wires together
+- Templates now set their recommended transformer automatically (EFHW → 49:1, OCFD → 4:1, delta loop → 4:1)
+
+### Fixed
+
+- Incorrect `end_mhz` field name in README API example (should be `stop_mhz`)
+- Frequency slider displaying bands in click order instead of ascending frequency order
+- Impedance chart zigzag lines when simulating non-contiguous multi-band sweeps
+- Frequency slider SWR display ignoring transformer/matching configuration
+- Multi-band analysis table ignoring transformer/matching configuration
+- Radiation efficiency always showing 100% regardless of ground type
+- Wire dragging at elevated heights no longer jumps to distant positions
+- Whole-wire drag sensitivity now matches mouse movement regardless of camera angle
+
+### Changed
+
+- Wire editor drag system rebuilt with camera-facing plane approach for smooth movement from any angle
+- Move matching/balun selector next to band presets in Wire Editor for discoverability
+
 ## [1.0.1] - 2026-03-24
 
 ### Added
@@ -268,6 +340,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 This was the initial public release -- a complete rewrite of the original prototype into a production-quality application with React 19, TypeScript, FastAPI, and Docker.
 
+[1.2.2]: https://github.com/EA1FUO/AntennaSim/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/EA1FUO/AntennaSim/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/EA1FUO/AntennaSim/compare/v1.1.1...v1.2.0
 [1.0.0]: https://github.com/EA1FUO/AntennaSim/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/EA1FUO/AntennaSim/compare/v0.7.7...v0.8.0
 [0.7.7]: https://github.com/EA1FUO/AntennaSim/compare/v0.7.6...v0.7.7

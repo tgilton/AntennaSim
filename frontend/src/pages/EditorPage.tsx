@@ -91,6 +91,8 @@ export function EditorPage() {
   const moveAllWiresZ = useEditorStore((s) => s.moveAllWiresZ);
   const clearAll = useEditorStore((s) => s.clearAll);
   const setWires = useEditorStore((s) => s.setWires);
+  const addLoad = useEditorStore((s) => s.addLoad);
+  const addTransmissionLine = useEditorStore((s) => s.addTransmissionLine);
 
   // Simulation store
   const simStatus = useSimulationStore((s) => s.status);
@@ -237,27 +239,35 @@ export function EditorPage() {
 
   const handleLoadTemplate = useCallback(() => {
     const geom = selectedTemplate.generateGeometry(templateParams);
-    const exc = selectedTemplate.generateExcitation(templateParams, geom);
+    const rawExc = selectedTemplate.generateExcitation(templateParams, geom);
+    const excitations = Array.isArray(rawExc) ? rawExc : [rawExc];
+    const templateLoads = selectedTemplate.generateLoads?.(templateParams, geom) ?? [];
+    const templateTLs = selectedTemplate.generateTransmissionLines?.(templateParams, geom) ?? [];
     const freqRange = selectedTemplate.defaultFrequencyRange(templateParams);
     const freqParam = templateParams.frequency ?? templateParams.freq ?? 14.15;
 
-    // Clear editor and load template wires
+    // Clear editor and load template wires + excitations
     clearAll();
     setWires(
       geom.map((w) => ({ ...w, selected: false })),
-      [exc]
+      excitations
     );
+
+    // Carry over any template loads / transmission lines
+    templateLoads.forEach((load) => addLoad(load));
+    templateTLs.forEach((tl) => addTransmissionLine(tl));
 
     // Update design frequency and sweep range
     setDesignFrequency(freqParam);
     setFrequencyRange(freqRange);
 
-    // Set ground from template default
+    // Set ground and matching from template defaults
     setGround(selectedTemplate.defaultGround);
+    setMatching(selectedTemplate.defaultMatching ?? { type: "none", ratio: 1, feedlineZ0: 50 });
 
     // Switch to wires section after loading
     setEditorSection("wires");
-  }, [selectedTemplate, templateParams, clearAll, setWires, setDesignFrequency, setFrequencyRange, setGround]);
+  }, [selectedTemplate, templateParams, clearAll, setWires, addLoad, addTransmissionLine, setDesignFrequency, setFrequencyRange, setGround, setMatching, setEditorSection]);
 
   const handleBandSelect = useCallback(
     (range: FrequencyRange, _band: HamBand) => {
@@ -274,7 +284,11 @@ export function EditorPage() {
       if (hasBandSegment(frequencySegments, band)) {
         setFrequencySegments(removeBandSegment(frequencySegments, band));
       } else {
-        setFrequencySegments([...frequencySegments, bandToSegment(band)]);
+        setFrequencySegments(
+          [...frequencySegments, bandToSegment(band)].sort(
+            (a, b) => a.start_mhz - b.start_mhz
+          )
+        );
       }
     },
     [frequencySegments, setFrequencySegments]
@@ -394,8 +408,8 @@ export function EditorPage() {
               )}
               {mode === "move" && (
                 <span className="text-text-secondary ml-1">
-                  <span className="hidden lg:inline">(Shift = vertical)</span>
-                  <span className="lg:hidden">{verticalDrag ? "(vertical)" : "(horizontal)"}</span>
+                  <span className="hidden lg:inline">(X/Y/Z = lock axis, Shift+X/Y/Z = exclude axis)</span>
+                  <span className="lg:hidden">{verticalDrag ? "(vertical)" : "(drag to move)"}</span>
                 </span>
               )}
             </div>
@@ -618,9 +632,6 @@ export function EditorPage() {
                     {/* Ground */}
                     <GroundEditor ground={ground} onChange={setGround} />
 
-                    {/* Matching / Balun */}
-                    <BalunEditor matching={matching} onChange={setMatching} />
-
                     {/* Pattern resolution */}
                     <div>
                       <label className="text-[10px] text-text-secondary font-semibold uppercase tracking-wider block mb-1">
@@ -679,6 +690,9 @@ export function EditorPage() {
               segments={frequencySegments}
               onSegmentsChange={setFrequencySegments}
             />
+
+            {/* Matching / Balun — near band presets for discoverability */}
+            <BalunEditor matching={matching} onChange={setMatching} />
 
             {/* Antenna height */}
             {wires.length > 0 && (
@@ -807,6 +821,8 @@ export function EditorPage() {
                 onSegmentsChange={setFrequencySegments}
                 size="sm"
               />
+              {/* Matching / Balun — near band presets for discoverability */}
+              <BalunEditor matching={matching} onChange={setMatching} />
               {/* Snap size */}
               <div>
                 <label className="text-[11px] text-text-secondary font-semibold uppercase tracking-wider block mb-1">Snap Size</label>
@@ -833,7 +849,6 @@ export function EditorPage() {
                 </select>
               </div>
               <GroundEditor ground={ground} onChange={setGround} />
-              <BalunEditor matching={matching} onChange={setMatching} />
             </div>
           )}
           {mobileTab === "tools" && (

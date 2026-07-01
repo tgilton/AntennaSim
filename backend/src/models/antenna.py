@@ -2,10 +2,12 @@
 
 import math
 from enum import Enum
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
+
+from src.models.base import StrictModel
 
 
-class Wire(BaseModel):
+class Wire(StrictModel):
     """A single wire element in the antenna geometry."""
 
     tag: int = Field(ge=1, le=9999, description="Wire tag number")
@@ -46,7 +48,7 @@ class Wire(BaseModel):
         return self
 
 
-class Excitation(BaseModel):
+class Excitation(StrictModel):
     """Voltage source excitation on a wire segment."""
 
     wire_tag: int = Field(ge=1, le=9999, description="Wire tag number")
@@ -65,7 +67,7 @@ class LoadType(int, Enum):
     WIRE_CONDUCTIVITY = 5  # Wire conductivity (S/m)
 
 
-class LumpedLoad(BaseModel):
+class LumpedLoad(StrictModel):
     """A lumped load on a wire segment (NEC2 LD card).
 
     - type=0: Series RLC. resistance (Ohms), inductance (H), capacitance (F)
@@ -85,7 +87,7 @@ class LumpedLoad(BaseModel):
 
 # ---- V2: Wire Arc (GA card) ----
 
-class WireArc(BaseModel):
+class WireArc(StrictModel):
     """A wire arc element (NEC2 GA card).
 
     GA TAG SEGMENTS ARC_RADIUS START_ANGLE END_ANGLE WIRE_RADIUS
@@ -110,7 +112,7 @@ class WireArc(BaseModel):
 
 # ---- V2: Coordinate Transformation (GM card) ----
 
-class GeometryTransform(BaseModel):
+class GeometryTransform(StrictModel):
     """Coordinate transformation (NEC2 GM card).
 
     GM TAG_INC N_NEW ROT_X ROT_Y ROT_Z TRANS_X TRANS_Y TRANS_Z START_TAG
@@ -135,7 +137,7 @@ class GeometryTransform(BaseModel):
 
 # ---- V2: Cylindrical Symmetry (GR card) ----
 
-class CylindricalSymmetry(BaseModel):
+class CylindricalSymmetry(StrictModel):
     """Cylindrical symmetry (NEC2 GR card).
 
     GR TAG_INCREMENT N_COPIES
@@ -159,7 +161,7 @@ WIRE_CONDUCTIVITY: dict[str, float] = {
 
 # ---- V2: Transmission Lines ----
 
-class TransmissionLine(BaseModel):
+class TransmissionLine(StrictModel):
     """Transmission line between two wire segments (NEC2 TL card).
 
     Connects segment on wire_tag1 to segment on wire_tag2.
@@ -169,10 +171,19 @@ class TransmissionLine(BaseModel):
     segment1: int = Field(ge=1, le=200, description="Segment on first wire")
     wire_tag2: int = Field(ge=1, le=9999, description="Second wire tag")
     segment2: int = Field(ge=1, le=200, description="Segment on second wire")
-    impedance: float = Field(ge=1.0, le=1000.0, description="Characteristic impedance Z0 (Ohms)")
+    impedance: float = Field(
+        ge=-1000.0, le=1000.0,
+        description="Characteristic impedance Z0 (Ohms). A negative value selects a "
+                    "crossed (transposed) line, e.g. a log-periodic phase line (NEC2 convention).")
     length: float = Field(ge=0.0, le=1000.0, default=0.0,
                           description="Physical length (m). 0 = calculate from wire geometry")
     shunt_admittance_real1: float = Field(default=0.0, description="Shunt admittance at end 1, real part")
     shunt_admittance_imag1: float = Field(default=0.0, description="Shunt admittance at end 1, imag part")
     shunt_admittance_real2: float = Field(default=0.0, description="Shunt admittance at end 2, real part")
     shunt_admittance_imag2: float = Field(default=0.0, description="Shunt admittance at end 2, imag part")
+
+    @model_validator(mode="after")
+    def check_impedance_magnitude(self) -> "TransmissionLine":
+        if abs(self.impedance) < 1.0:
+            raise ValueError("Transmission line |impedance| must be at least 1 ohm")
+        return self
