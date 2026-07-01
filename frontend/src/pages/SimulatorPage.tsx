@@ -8,7 +8,7 @@
  *   [3D Viewport (45%)] [Bottom Sheet: Antenna | Results tabs]
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAntennaStore } from "../stores/antennaStore";
 import { useSimulationStore } from "../stores/simulationStore";
 import { useUIStore } from "../stores/uiStore";
@@ -48,6 +48,7 @@ const MOBILE_SEGMENTS = [
   { key: "results", label: "Results" },
 ];
 
+
 export function SimulatorPage() {
   // Antenna store
   const template = useAntennaStore((s) => s.template);
@@ -66,6 +67,7 @@ export function SimulatorPage() {
   const setGround = useAntennaStore((s) => s.setGround);
   const setFrequencyRange = useAntennaStore((s) => s.setFrequencyRange);
   const setFrequencySegments = useAntennaStore((s) => s.setFrequencySegments);
+
 
   // Simulation store
   const simStatus = useSimulationStore((s) => s.status);
@@ -108,6 +110,14 @@ export function SimulatorPage() {
   // Pattern resolution
   const [patternStep, setPatternStep] = useState(5);
 
+  // Copilot chat state
+  type ChatMsg = { role: "user" | "assistant"; content: string };
+  const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const handleRunSimulation = useCallback(() => {
     simulateAdvanced({
       wires: wireGeometry,
@@ -120,6 +130,78 @@ export function SimulatorPage() {
       pattern_step: patternStep,
     });
   }, [simulateAdvanced, wireGeometry, excitations, loads, transmissionLines, ground, frequencyRange, patternStep, frequencySegments]);
+
+  const handleCopilotChat = useCallback(async () => {
+    const msg = chatInput.trim();
+    if (!msg) return;
+
+    // Build context from current simulator state
+    const ctx: Record<string, unknown> = {
+      template_id: template.id,
+      template_name: template.name,
+      parameters: params,
+      ground_type: ground.type,
+      frequency_start_mhz: frequencyRange.start_mhz,
+      frequency_stop_mhz: frequencyRange.stop_mhz,
+    };
+
+    // Include the most recent sim result if available
+    if (selectedFreqResult) {
+      ctx.simulation_result = {
+        frequency_mhz: selectedFreqResult.frequency_mhz,
+        swr: selectedFreqResult.swr_50,
+        gain_max_dbi: selectedFreqResult.gain_max_dbi,
+        takeoff_angle_deg:
+          selectedFreqResult.gain_max_theta !== undefined
+            ? selectedFreqResult.gain_max_theta + 90  // convert NEC2 theta to elevation
+            : undefined,
+        efficiency_pct: selectedFreqResult.efficiency_percent,
+        impedance_r: selectedFreqResult.impedance?.real,
+        impedance_x: selectedFreqResult.impedance?.imag,
+      };
+    }
+
+    const newHistory: { role: "user" | "assistant"; content: string }[] = [
+      ...chatHistory,
+      { role: "user", content: msg },
+    ];
+    setChatHistory(newHistory);
+    setChatInput("");
+    setChatLoading(true);
+    setChatError("");
+
+    // Scroll to bottom
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+    try {
+      const response = await fetch("/api/v1/copilot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msg,
+          history: chatHistory,  // send history before adding current user msg
+          context: ctx,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Copilot error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setChatHistory([
+        ...newHistory,
+        { role: "assistant", content: data.response },
+      ]);
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : "Unknown error");
+      // Remove the optimistically-added user message on failure
+      setChatHistory(chatHistory);
+    } finally {
+      setChatLoading(false);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    }
+  }, [chatInput, chatHistory, template, params, ground, frequencyRange, selectedFreqResult]);
 
   const handleBandSelect = useCallback(
     (range: FrequencyRange, _band: HamBand) => {
@@ -198,6 +280,7 @@ export function SimulatorPage() {
     () => resolveTransmissionLines(transmissionLines, wireGeometry),
     [transmissionLines, wireGeometry]
   );
+
 
   // Pattern data for 3D viewport
   const patternData = selectedFreqResult?.pattern ?? null;
@@ -283,6 +366,95 @@ export function SimulatorPage() {
                 </p>
               )}
             </div>
+
+<div className="border-t border-border" />
+
+<div className="space-y-2">
+  <div className="flex items-center justify-between px-1">
+    <h3 className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+      Copilot
+    </h3>
+    {chatHistory.length > 0 && (
+      <button
+        onClick={() => setChatHistory([])}
+        className="text-[10px] text-text-secondary hover:text-text-primary font-mono underline"
+      >
+        clear
+      </button>
+    )}
+  </div>
+
+  {/* Chat history */}
+  {chatHistory.length > 0 && (
+    <div className="max-h-64 overflow-y-auto space-y-2 rounded border border-border bg-background p-2">
+      {chatHistory.map((msg, i) => (
+        <div
+          key={i}
+          className={`text-xs leading-relaxed ${
+            msg.role === "user"
+              ? "text-text-secondary pl-1 border-l-2 border-border"
+              : "text-text-primary"
+          }`}
+        >
+          {msg.role === "user" ? (
+            <span className="text-[10px] text-text-secondary font-mono uppercase mr-1">You:</span>
+          ) : (
+            <span className="text-[10px] text-accent font-mono uppercase mr-1">Copilot:</span>
+          )}
+          {msg.content}
+        </div>
+      ))}
+      {chatLoading && (
+        <div className="text-xs text-text-secondary animate-pulse">
+          <span className="text-[10px] text-accent font-mono uppercase mr-1">Copilot:</span>
+          thinking…
+        </div>
+      )}
+      <div ref={chatEndRef} />
+    </div>
+  )}
+
+  {chatError && (
+    <p className="text-xs text-swr-bad px-1">{chatError}</p>
+  )}
+
+  {/* Input */}
+  <textarea
+    value={chatInput}
+    onChange={(e) => setChatInput(e.target.value)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (!chatLoading && chatInput.trim()) handleCopilotChat();
+      }
+    }}
+    placeholder={
+      selectedFreqResult
+        ? "Ask about your simulation results…"
+        : "Describe your antenna or ask a question…"
+    }
+    rows={3}
+    className="w-full bg-background text-text-primary text-xs px-2 py-2 rounded border border-border outline-none resize-none"
+  />
+
+  <Button
+    onClick={handleCopilotChat}
+    loading={chatLoading}
+    disabled={chatLoading || !chatInput.trim()}
+    className="w-full"
+    size="sm"
+  >
+    {chatLoading ? "Thinking…" : "Ask Copilot"}
+  </Button>
+
+  {chatHistory.length === 0 && !chatLoading && (
+    <p className="text-[10px] text-text-secondary px-1 leading-tight">
+      Copilot sees your current antenna, parameters, and simulation results automatically.
+      {!selectedFreqResult && " Run a simulation first for best advice."}
+    </p>
+  )}
+</div>
+
 
             {/* Tips */}
             {template.tips.length > 0 && (

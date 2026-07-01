@@ -53,8 +53,9 @@ app = FastAPI(
     description="Web Antenna Simulator — NEC2 Engine",
     version=settings.version,
     lifespan=lifespan,
-    docs_url="/docs" if settings.is_dev else None,
-    redoc_url="/redoc" if settings.is_dev else None,
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
 )
 
 # Register custom exception handlers

@@ -5,6 +5,7 @@ from src.api.v1.simulate import router as simulate_router
 from src.api.v1.convert import router as convert_router
 from src.api.v1.optimize import router as optimize_router
 from src.api.v1.ws import router as ws_router
+from src.copilot_router import router as copilot_router
 
 api_router = APIRouter()
 
@@ -16,3 +17,6 @@ api_router.include_router(simulate_router, prefix="/v1", tags=["simulation"])
 api_router.include_router(convert_router, prefix="/v1", tags=["convert"])
 api_router.include_router(optimize_router, prefix="/v1", tags=["optimizer"])
 api_router.include_router(ws_router, prefix="/v1", tags=["websocket"])
+
+# Copilot routes
+api_router.include_router(copilot_router, prefix="/v1", tags=["copilot"])

@@ -19,6 +19,7 @@ services:
       - MAX_CONCURRENT_PER_IP=5
       - SIM_TIMEOUT_SECONDS=180
       - NEC_WORKDIR=/tmp/nec_workdir
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     restart: unless-stopped
     deploy:
       resources:
