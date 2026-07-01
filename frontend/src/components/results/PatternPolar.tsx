@@ -25,7 +25,7 @@ interface PatternPolarProps {
 }
 
 /** Extract a cut from the 2D gain array */
-function extractCut(
+export function extractCut(
   pattern: PatternData,
   mode: "azimuth" | "elevation"
 ): { angle: number; gain: number }[] {
@@ -50,8 +50,12 @@ function extractCut(
       const phi = phi_start + pi * phi_step;
       const gain = gain_dbi[bestTheta]?.[pi] ?? -999;
       // NEC phi -> compass bearing so the trace lines up with the N/E/S/W
-      // labels and the 3D viewport compass.
-      const bearing = ((-90 - phi) % 360 + 360) % 360;
+      // labels and the 3D viewport compass. Verified against polarToXY
+      // (angle=0 -> N/top, 90 -> E/right) and a wire placed on the +X axis:
+      // phi=0 must map to bearing=90 (east). bearing=90-phi satisfies that;
+      // a previous version of this formula, bearing=-90-phi, was off by 180
+      // (a mirrored N<->S, E<->W swap).
+      const bearing = ((90 - phi) % 360 + 360) % 360;
       points.push({ angle: bearing, gain });
     }
     points.sort((a, b) => a.angle - b.angle);
