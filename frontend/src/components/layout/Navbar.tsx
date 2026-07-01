@@ -75,7 +75,7 @@ export function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <span className="text-accent font-bold text-lg tracking-tight">
-              AntennaSim
+              W7TLG-AntennaSim
             </span>
             <span className="text-text-secondary text-[10px] font-mono">
               v{__APP_VERSION__}

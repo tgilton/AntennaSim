@@ -66,7 +66,7 @@ export function AboutPage() {
           {/* Hero */}
           <div>
             <h1 className="text-3xl font-bold text-text-primary mb-2">
-              About AntennaSim
+              About W7TLG-AntennaSim
             </h1>
             <p className="text-text-secondary leading-relaxed">
               AntennaSim is a modern, free, open-source web-based antenna simulator
@@ -74,6 +74,26 @@ export function AboutPage() {
               desktop tools like MMANA-GAL, 4NEC2, and EZNEC with a beautiful,
               accessible web experience that works on any device without
               installation.
+            </p>
+            <p className="text-text-secondary leading-relaxed mt-3 text-sm border-l-2 border-border pl-3">
+              <strong className="text-text-primary">This is a personal research fork</strong> maintained
+              by Terry Gilton (W7TLG), derived from{" "}
+              <a
+                href="https://github.com/EA1FUO/AntennaSim"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                EA1FUO/AntennaSim
+              </a>
+              , the original project. This fork adds custom antenna templates
+              (Elevated Quarterwave Vertical, Loop Counterpoise Vertical, Parasitic
+              Vertical Array) and parametric antenna research — see the{" "}
+              <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">
+                experiments/
+              </code>{" "}
+              folder in the repository. For the canonical upstream project, live
+              demo, and Docker image, see the original repository linked above.
             </p>
           </div>
 

@@ -1,8 +1,15 @@
-<h1 align="center">AntennaSim</h1>
+<h1 align="center">W7TLG-AntennaSim</h1>
 
 <p align="center">
   <strong>Free, open-source antenna simulator for the browser -- powered by NEC2</strong>
 </p>
+
+> **This is a personal research fork.** [W7TLG-AntennaSim](https://github.com/tgilton/W7TLG-AntennaSim)
+> is Terry Gilton's (W7TLG) derivative of **[EA1FUO/AntennaSim](https://github.com/EA1FUO/AntennaSim)**,
+> the original project -- for the canonical upstream source, live demo, and published Docker image, see
+> the link above. This fork adds custom antenna templates (Elevated Quarterwave Vertical, Loop
+> Counterpoise Vertical, Parasitic Vertical Array) and parametric antenna research; see
+> [`experiments/`](experiments/) in this repository.
 
 <p align="center">
   <a href="https://github.com/EA1FUO/AntennaSim/stargazers"><img src="https://img.shields.io/github/stars/EA1FUO/AntennaSim?style=flat-square" alt="GitHub stars"></a>
@@ -35,7 +42,7 @@
 <br>
 
 <p align="center">
-  <strong>17 antenna templates</strong> &nbsp;&middot;&nbsp;
+  <strong>20 antenna templates</strong> &nbsp;&middot;&nbsp;
   <strong>3D radiation patterns</strong> &nbsp;&middot;&nbsp;
   <strong>SWR &amp; Smith charts</strong> &nbsp;&middot;&nbsp;
   <strong>Wire editor + optimizer</strong> &nbsp;&middot;&nbsp;
@@ -66,13 +73,13 @@ Design antennas from built-in templates or build your own from scratch in the wi
 docker run -p 80:80 ea1fuo/antennasim
 ```
 
-Open **http://localhost** in your browser. Done. This pulls the all-in-one image from Docker Hub with everything bundled (frontend, backend, Redis, nginx).
+Open **http://localhost** in your browser. Done. This pulls the all-in-one image from Docker Hub with everything bundled (frontend, backend, Redis, nginx). Note: this is the **upstream** image and does not include this fork's additional templates or experiments -- clone from source below to get those.
 
 ### From source
 
 ```bash
-git clone https://github.com/EA1FUO/AntennaSim.git
-cd AntennaSim
+git clone https://github.com/tgilton/W7TLG-AntennaSim.git
+cd W7TLG-AntennaSim
 cp .env.example .env
 docker compose up --build
 ```
@@ -98,7 +105,7 @@ Full guides live in the [`docs/`](docs/) folder:
 
 ## Highlights
 
-- **17 antenna templates** -- dipoles, verticals, loops, Yagi/Moxon/Hex beams, LPDA, magnetic loop, and more ([full list](docs/usage.md#antenna-templates))
+- **20 antenna templates** -- dipoles, verticals, loops, Yagi/Moxon/Hex beams, LPDA, magnetic loop, and more ([full list](docs/usage.md#antenna-templates))
 - **Full NEC2 pipeline** -- card deck generation, `nec2c` execution, and parsed results, all automated
 - **Interactive 3D viewport** -- radiation patterns, current distribution with animated flow, near-field heatmaps
 - **Charts & analysis** -- SWR, impedance, Smith chart, polar pattern, balun/unun matching, NanoVNA `.s1p` overlay
@@ -114,7 +121,7 @@ See the [Usage guide](docs/usage.md#features) for the complete feature list.
 
 Contributions are welcome -- this is a free and open-source project for the amateur radio community. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, branch/commit conventions, and how to add an antenna template.
 
-Found a bug or have an idea? Open an [issue](https://github.com/EA1FUO/AntennaSim/issues) or a [discussion](https://github.com/EA1FUO/AntennaSim/discussions).
+Found a bug or have an idea for this fork? Open an [issue](https://github.com/tgilton/W7TLG-AntennaSim/issues) here. For issues in the core upstream project, see [EA1FUO/AntennaSim](https://github.com/EA1FUO/AntennaSim/issues).
 
 ---
 
@@ -137,5 +144,5 @@ You are free to use, modify, and distribute this software. If you distribute mod
 <p align="center">
   <sub>Built for amateur radio operators, by amateur radio operators.</sub>
   <br>
-  <sub>73 de AntennaSim</sub>
+  <sub>73 de W7TLG</sub>
 </p>
