@@ -129,17 +129,25 @@ async def simulate(request_body: SimulationRequest, request: Request) -> Simulat
                 },
             )
 
-        # Collect warnings
+        # Collect warnings \u2014 summarized rather than one line per frequency
+        # point, since a deliberately wide/unmatched sweep (e.g. a raw
+        # feedpoint scan far from any single band) can otherwise flood this
+        # with dozens of near-duplicate lines.
         warnings: list[str] = []
-        for fd in frequency_data:
-            if fd.swr_50 > 10.0:
-                warnings.append(
-                    f"Very high SWR ({fd.swr_50:.1f}) at {fd.frequency_mhz:.3f} MHz"
-                )
-            if fd.impedance.real < 1.0:
-                warnings.append(
-                    f"Very low feed resistance ({fd.impedance.real:.1f} \u03A9) at {fd.frequency_mhz:.3f} MHz"
-                )
+        high_swr_points = [fd for fd in frequency_data if fd.swr_50 > 10.0]
+        if high_swr_points:
+            worst = max(high_swr_points, key=lambda fd: fd.swr_50)
+            warnings.append(
+                f"Very high SWR (>10:1) at {len(high_swr_points)} of {len(frequency_data)} "
+                f"frequency points (worst {worst.swr_50:.1f} at {worst.frequency_mhz:.3f} MHz)"
+            )
+        low_r_points = [fd for fd in frequency_data if fd.impedance.real < 1.0]
+        if low_r_points:
+            worst = min(low_r_points, key=lambda fd: fd.impedance.real)
+            warnings.append(
+                f"Very low feed resistance (<1\u03A9) at {len(low_r_points)} of {len(frequency_data)} "
+                f"frequency points (lowest {worst.impedance.real:.1f}\u03A9 at {worst.frequency_mhz:.3f} MHz)"
+            )
 
         logger.info(
             "Simulation %s complete: %.0fms, %d freq points, max gain=%.1f dBi",
