@@ -41,7 +41,7 @@ _PATTERN_HEADER_RE = re.compile(r"RADIATION PATTERNS")
 # Pattern data line:
 # THETA  PHI  VERTC_DB  HORIZ_DB  TOTAL_DB  AXIAL_RATIO  TILT  SENSE  MAG  PHASE  MAG  PHASE
 _PATTERN_LINE_RE = re.compile(
-    r"\s*(" + _NUM + r")\s+(" + _NUM + r")\s+"    # theta, phi
+    r"^\s*(" + _NUM + r")\s+(" + _NUM + r")\s+"    # theta, phi
     r"(" + _NUM + r")\s+(" + _NUM + r")\s+"        # vert_db, horiz_db
     r"(" + _NUM + r")\s+"                           # total_db
     r"(" + _NUM + r")\s+(" + _NUM + r")\s+"        # axial_ratio, tilt
