@@ -23,24 +23,31 @@ import {
   Legend,
 } from "recharts";
 import type { FrequencyResult } from "../../api/nec";
+import type { S1PDataPoint } from "../../utils/s1p-parser";
 import type { MatchingConfig } from "../../utils/units";
-import { applyMatching, DEFAULT_MATCHING } from "../../utils/units";
+import { DEFAULT_MATCHING } from "../../utils/units";
+import type { FeedChainConfig } from "../../utils/transmissionLine";
+import { resolveMatch } from "../../utils/transmissionLine";
 import { useChartTheme } from "../../hooks/useChartTheme";
 
 interface ImpedanceChartProps {
   data: FrequencyResult[];
   /** Matching config for impedance transformation */
   matching?: MatchingConfig;
+  /** When enabled, overrides `matching` with the transmission-line cascade */
+  feedChain?: FeedChainConfig;
+  /** Optional measured-reference overlay (.s1p or RigExpert CSV import) */
+  s1pData?: S1PDataPoint[];
   /** Height class override (default: h-48) */
   heightClass?: string;
 }
 
-export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass = "h-56" }: ImpedanceChartProps) {
+export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, feedChain, s1pData, heightClass = "h-56" }: ImpedanceChartProps) {
   const chartData = useMemo(
     () =>
       data
         .map((d) => {
-          const m = applyMatching(d.impedance.real, d.impedance.imag, matching);
+          const m = resolveMatch(d.frequency_mhz, d.impedance.real, d.impedance.imag, matching, feedChain);
           return {
             freq: d.frequency_mhz,
             r: m.real,
@@ -48,32 +55,52 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
           };
         })
         .sort((a, b) => a.freq - b.freq),
-    [data, matching]
+    [data, matching, feedChain]
   );
 
+  const measuredData = useMemo(
+    () =>
+      (s1pData ?? [])
+        .map((d) => ({ freq: d.frequency_mhz, mr: d.impedance_real, mx: d.impedance_imag }))
+        .sort((a, b) => a.freq - b.freq),
+    [s1pData]
+  );
+
+  const effectiveZ0 = useMemo(() => {
+    if (!feedChain?.enabled || data.length === 0) return matching.feedlineZ0;
+    const first = data[0]!;
+    return resolveMatch(first.frequency_mhz, first.impedance.real, first.impedance.imag, matching, feedChain).z0;
+  }, [data, matching, feedChain]);
+
   const freqRange = useMemo(() => {
-    if (chartData.length === 0) return { min: 0, max: 1 };
+    const all = measuredData.length > 0 ? [...chartData, ...measuredData] : chartData;
+    if (all.length === 0) return { min: 0, max: 1 };
+    const freqs = all.map((d) => d.freq);
     return {
-      min: chartData[0]!.freq,
-      max: chartData[chartData.length - 1]!.freq,
+      min: Math.min(...freqs),
+      max: Math.max(...freqs),
     };
-  }, [chartData]);
+  }, [chartData, measuredData]);
 
   // Calculate Y axis bounds
   const yBounds = useMemo(() => {
-    if (chartData.length === 0) return { min: -100, max: 200 };
+    if (chartData.length === 0 && measuredData.length === 0) return { min: -100, max: 200 };
     let minVal = Infinity;
     let maxVal = -Infinity;
     for (const d of chartData) {
       minVal = Math.min(minVal, d.r, d.x);
       maxVal = Math.max(maxVal, d.r, d.x);
     }
+    for (const d of measuredData) {
+      minVal = Math.min(minVal, d.mr, d.mx);
+      maxVal = Math.max(maxVal, d.mr, d.mx);
+    }
     const padding = Math.max(20, (maxVal - minVal) * 0.1);
     return {
       min: Math.floor((minVal - padding) / 10) * 10,
       max: Math.ceil((maxVal + padding) / 10) * 10,
     };
-  }, [chartData]);
+  }, [chartData, measuredData]);
 
   // Find resonance points where X crosses zero
   const resonanceFreqs = useMemo(() => {
@@ -95,7 +122,7 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
 
   const ct = useChartTheme();
 
-  if (data.length === 0) return null;
+  if (data.length === 0 && measuredData.length === 0) return null;
 
   return (
     <div className={`w-full ${heightClass} flex flex-col`}>
@@ -129,11 +156,11 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
 
           {/* Reference impedance line (matches feedline Z0) */}
           <ReferenceLine
-            y={matching.feedlineZ0}
+            y={effectiveZ0}
             stroke="#6B7280"
             strokeDasharray="6 3"
             strokeOpacity={0.5}
-            label={{ value: `${matching.feedlineZ0}\u03A9`, position: "right", fill: "#6B7280", fontSize: 9, fontFamily: "JetBrains Mono, monospace" }}
+            label={{ value: `${effectiveZ0}\u03A9`, position: "right", fill: "#6B7280", fontSize: 9, fontFamily: "JetBrains Mono, monospace" }}
           />
 
           {/* Zero reactance reference (resonance line) */}
@@ -183,17 +210,22 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
           <Legend
             iconType="line"
             wrapperStyle={{ fontSize: "10px", fontFamily: "JetBrains Mono, monospace", paddingTop: "4px" }}
-            formatter={(value: string) => (
-              <span style={{ color: ct.tick }}>
-                {value === "r" ? "R  Resistance (\u03A9)" : "jX  Reactance (\u03A9)"}
-              </span>
-            )}
+            formatter={(value: string) => {
+              const labels: Record<string, string> = {
+                r: "R  Resistance (\u03A9) \u2014 simulated",
+                x: "jX  Reactance (\u03A9) \u2014 simulated",
+                mr: "R \u2014 measured",
+                mx: "X \u2014 measured",
+              };
+              return <span style={{ color: ct.tick }}>{labels[value] ?? value}</span>;
+            }}
           />
 
           {/* Resistance — solid blue */}
           <Line
             type="monotone"
             dataKey="r"
+            data={chartData}
             stroke="#3B82F6"
             strokeWidth={2}
             dot={false}
@@ -206,6 +238,7 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
           <Line
             type="monotone"
             dataKey="x"
+            data={chartData}
             stroke="#F59E0B"
             strokeWidth={2}
             dot={false}
@@ -213,6 +246,38 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
             name="x"
             animationDuration={300}
           />
+
+          {/* Measured R — dashed blue, own frequency grid from the import */}
+          {measuredData.length > 0 && (
+            <Line
+              type="monotone"
+              dataKey="mr"
+              data={measuredData}
+              stroke="#3B82F6"
+              strokeWidth={1.5}
+              strokeDasharray="4 2"
+              strokeOpacity={0.75}
+              dot={false}
+              name="mr"
+              animationDuration={300}
+            />
+          )}
+
+          {/* Measured X — dashed orange */}
+          {measuredData.length > 0 && (
+            <Line
+              type="monotone"
+              dataKey="mx"
+              data={measuredData}
+              stroke="#F59E0B"
+              strokeWidth={1.5}
+              strokeDasharray="4 2"
+              strokeOpacity={0.75}
+              dot={false}
+              name="mx"
+              animationDuration={300}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
       </div>
@@ -220,7 +285,7 @@ export function ImpedanceChart({ data, matching = DEFAULT_MATCHING, heightClass 
       <div className="flex items-center justify-center gap-3 pt-1 shrink-0" style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "9px" }}>
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-0 border-t border-dashed" style={{ borderColor: "#6B7280" }} />
-          <span style={{ color: ct.tick }}>{matching.feedlineZ0}{"\u03A9"} ref</span>
+          <span style={{ color: ct.tick }}>{effectiveZ0}{"\u03A9"} ref</span>
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-4 h-0 border-t border-dashed" style={{ borderColor: "#10B981" }} />

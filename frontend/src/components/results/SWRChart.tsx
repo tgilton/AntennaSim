@@ -27,7 +27,9 @@ import {
 import type { FrequencyResult } from "../../api/nec";
 import type { S1PDataPoint } from "../../utils/s1p-parser";
 import type { MatchingConfig } from "../../utils/units";
-import { applyMatching, DEFAULT_MATCHING } from "../../utils/units";
+import { DEFAULT_MATCHING } from "../../utils/units";
+import type { FeedChainConfig } from "../../utils/transmissionLine";
+import { resolveMatch } from "../../utils/transmissionLine";
 import { useChartTheme } from "../../hooks/useChartTheme";
 import { getBandEdges } from "../../utils/ham-bands";
 
@@ -42,6 +44,8 @@ interface SWRChartProps {
   s1pData?: S1PDataPoint[];
   /** Matching config for impedance transformation */
   matching?: MatchingConfig;
+  /** When enabled, overrides `matching` with the transmission-line cascade */
+  feedChain?: FeedChainConfig;
   /** Height class override (default: h-48) */
   heightClass?: string;
 }
@@ -52,6 +56,7 @@ export function SWRChart({
   selectedIndex,
   s1pData,
   matching = DEFAULT_MATCHING,
+  feedChain,
   heightClass = "h-56",
 }: SWRChartProps) {
   // Merge simulation data and .s1p data into a unified dataset
@@ -63,7 +68,7 @@ export function SWRChart({
 
     for (let i = 0; i < data.length; i++) {
       const d = data[i]!;
-      const m = applyMatching(d.impedance.real, d.impedance.imag, matching);
+      const m = resolveMatch(d.frequency_mhz, d.impedance.real, d.impedance.imag, matching, feedChain);
       const key = d.frequency_mhz.toFixed(4);
       merged[key] = {
         freq: d.frequency_mhz,
@@ -89,7 +94,7 @@ export function SWRChart({
     }
 
     return Object.values(merged).sort((a, b) => a.freq - b.freq);
-  }, [data, s1pData, matching]);
+  }, [data, s1pData, matching, feedChain]);
 
   const freqRange = useMemo(() => {
     if (chartData.length === 0) return { min: 0, max: 1 };
@@ -106,7 +111,7 @@ export function SWRChart({
     let minIdx = 0;
     for (let i = 0; i < data.length; i++) {
       const d = data[i]!;
-      const m = applyMatching(d.impedance.real, d.impedance.imag, matching);
+      const m = resolveMatch(d.frequency_mhz, d.impedance.real, d.impedance.imag, matching, feedChain);
       if (m.swr < minSwr) {
         minSwr = m.swr;
         minIdx = i;
@@ -117,7 +122,7 @@ export function SWRChart({
       swr: Math.min(minSwr, 10),
       index: minIdx,
     };
-  }, [data, matching]);
+  }, [data, matching, feedChain]);
 
   // Find band edges that fall within the frequency range
   const visibleBands = useMemo(() => {
@@ -252,7 +257,7 @@ export function SWRChart({
                     : v < 3
                       ? "#F59E0B"
                       : "#EF4444";
-              const label = name === "s1pSwr" ? ".s1p" : "SWR";
+              const label = name === "s1pSwr" ? "measured" : "SWR";
               return [
                 <span key={String(name)} style={{ color }}>
                   {v.toFixed(2)}
@@ -269,7 +274,7 @@ export function SWRChart({
             wrapperStyle={{ fontSize: "10px", fontFamily: "JetBrains Mono, monospace", paddingTop: "4px" }}
             formatter={(value: string) => (
               <span style={{ color: ct.tick }}>
-                {value === "swr" ? "SWR (simulated)" : ".s1p (measured)"}
+                {value === "swr" ? "SWR (simulated)" : "SWR (measured)"}
               </span>
             )}
           />

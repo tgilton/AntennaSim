@@ -23,6 +23,7 @@ import { TemplatePicker } from "../components/editors/TemplatePicker";
 import { ParameterPanel } from "../components/editors/ParameterPanel";
 import { GroundEditor } from "../components/editors/GroundEditor";
 import { BalunEditor } from "../components/editors/BalunEditor";
+import { FeedChainEditor } from "../components/editors/FeedChainEditor";
 import { Button } from "../components/ui/Button";
 import { SegmentedControl } from "../components/ui/SegmentedControl";
 import { ColorScale } from "../components/ui/ColorScale";
@@ -322,6 +323,10 @@ export function SimulatorPage() {
             <div className="border-t border-border" />
 
             <BalunEditor matching={matching} onChange={setMatching} />
+
+            <div className="border-t border-border" />
+
+            <FeedChainEditor />
 
             <div className="border-t border-border" />
 

@@ -3,7 +3,7 @@
  * Used in the right panel on desktop and results sheet on mobile.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Tabs } from "../ui/Tabs";
 import { SWRChart } from "./SWRChart";
 import { ImpedanceChart } from "./ImpedanceChart";
@@ -15,8 +15,12 @@ import { MatchingPanel } from "./MatchingPanel";
 import { ChartExpandable } from "../ui/ChartPopup";
 import { useSimulationStore } from "../../stores/simulationStore";
 import { useUIStore, type ResultsTab } from "../../stores/uiStore";
-import { formatSwr, formatImpedance, formatGain, swrColorClass, applyMatching } from "../../utils/units";
+import { useFeedChainStore } from "../../stores/feedChainStore";
+import { formatSwr, formatImpedance, formatGain, swrColorClass } from "../../utils/units";
+import { resolveMatch, tapIndexForStageId } from "../../utils/transmissionLine";
 import { parseS1P } from "../../utils/s1p-parser";
+import { parseRigExpertCsv } from "../../utils/rigexpert-parser";
+import { computeFitError } from "../../utils/fit-error";
 
 const TABS = [
   { key: "swr", label: "SWR" },
@@ -44,7 +48,20 @@ export function ResultsPanel() {
   const setS1PFile = useUIStore((s) => s.setS1PFile);
   const matching = useUIStore((s) => s.matching);
 
+  const feedChainEnabled = useFeedChainStore((s) => s.enabled);
+  const feedChainStages = useFeedChainStore((s) => s.stages);
+  const feedChainTapStageId = useFeedChainStore((s) => s.tapStageId);
+  const feedChain = useMemo(
+    () => ({
+      enabled: feedChainEnabled,
+      stages: feedChainStages,
+      tapIndex: tapIndexForStageId(feedChainStages, feedChainTapStageId),
+    }),
+    [feedChainEnabled, feedChainStages, feedChainTapStageId]
+  );
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
 
   // Takeoff angle for azimuth pattern cut (null = auto from max-gain row)
   const [azimuthElevation, setAzimuthElevation] = useState<number | null>(null);
@@ -71,10 +88,18 @@ export function ResultsPanel() {
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          const parsed = parseS1P(reader.result as string, file.name);
-          setS1PFile(parsed);
+          const isCsv = file.name.toLowerCase().endsWith(".csv");
+          if (isCsv) {
+            const { file: parsed, warnings } = parseRigExpertCsv(reader.result as string, file.name);
+            setImportWarnings(warnings);
+            setS1PFile(parsed);
+          } else {
+            const parsed = parseS1P(reader.result as string, file.name);
+            setImportWarnings([]);
+            setS1PFile(parsed);
+          }
         } catch {
-          // Silently fail — could add toast later
+          setImportWarnings(["Could not parse this file — check the format and try again."]);
         }
       };
       reader.readAsText(file);
@@ -86,15 +111,56 @@ export function ResultsPanel() {
 
   const handleS1PClear = useCallback(() => {
     setS1PFile(null);
+    setImportWarnings([]);
   }, [setS1PFile]);
+
+  const fitError = useMemo(() => {
+    if (!result || !s1pFile || s1pFile.data.length === 0) return null;
+    return computeFitError(result.frequency_data, s1pFile.data, matching, feedChain);
+  }, [result, s1pFile, matching, feedChain]);
+
+  const measuredControls = (
+    <div className="flex items-center gap-1.5">
+      {s1pFile && (
+        <button
+          onClick={handleS1PClear}
+          className="text-[10px] text-text-secondary hover:text-swr-bad transition-colors"
+          title="Remove measured overlay"
+        >
+          {s1pFile.filename} x
+        </button>
+      )}
+      <button
+        onClick={handleS1PImport}
+        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent/50 transition-colors"
+        title="Import a .s1p (NanoVNA) or RigExpert AntScope CSV scan"
+      >
+        Import scan
+      </button>
+    </div>
+  );
+
+  const measuredStatus = (importWarnings.length > 0 || fitError) && (
+    <div className="space-y-0.5">
+      {fitError && (
+        <p className="text-[10px] text-text-secondary">
+          Fit vs. measured: <span className="font-mono text-text-primary">{fitError.rmsOhm.toFixed(1)}Ω RMS</span>{" "}
+          ({fitError.sampleCount} pts)
+        </p>
+      )}
+      {importWarnings.map((w, i) => (
+        <p key={i} className="text-[10px] text-swr-warning">{w}</p>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Hidden file input for .s1p import */}
+      {/* Hidden file input for .s1p / RigExpert CSV import */}
       <input
         ref={fileInputRef}
         type="file"
-        accept=".s1p,.S1P"
+        accept=".s1p,.S1P,.csv,.CSV"
         className="hidden"
         onChange={handleS1PFileChange}
       />
@@ -108,12 +174,12 @@ export function ResultsPanel() {
             <p className="text-sm text-text-secondary text-center px-4">
               Run a simulation to see results here.
             </p>
-            {resultsTab === "swr" && (
+            {(resultsTab === "swr" || resultsTab === "impedance") && (
               <button
                 onClick={handleS1PImport}
                 className="text-xs px-3 py-1.5 rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent/50 transition-colors"
               >
-                Import .s1p
+                Import measured scan
               </button>
             )}
           </div>
@@ -143,17 +209,20 @@ export function ResultsPanel() {
           <div className="space-y-3">
             {/* Quick summary — always visible */}
             {selectedFreqResult && (() => {
-              const m = applyMatching(
+              const m = resolveMatch(
+                selectedFreqResult.frequency_mhz,
                 selectedFreqResult.impedance.real,
                 selectedFreqResult.impedance.imag,
-                matching
+                matching,
+                feedChain
               );
-              const hasMatching = matching.ratio !== 1 || matching.feedlineZ0 !== 50;
+              const hasMatching = feedChain.enabled || matching.ratio !== 1 || matching.feedlineZ0 !== 50;
+              const suffix = feedChain.enabled ? " (feed chain)" : ` (${matching.feedlineZ0}\u03A9)`;
               return (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="bg-background rounded-md p-2">
                     <div className="text-[10px] text-text-secondary">
-                      SWR{hasMatching ? ` (${matching.feedlineZ0}\u03A9)` : ""}
+                      SWR{hasMatching ? suffix : ""}
                     </div>
                     <div
                       className={`text-lg font-mono font-bold ${swrColorClass(m.swr)}`}
@@ -169,7 +238,7 @@ export function ResultsPanel() {
                   </div>
                   <div className="bg-background rounded-md p-2 col-span-2">
                     <div className="text-[10px] text-text-secondary">
-                      Impedance{hasMatching ? ` (after ${matching.ratio}:1)` : ""}
+                      Impedance{feedChain.enabled ? " (feed chain)" : hasMatching ? ` (after ${matching.ratio}:1)` : ""}
                     </div>
                     <div className="text-sm font-mono text-text-primary">
                       {formatImpedance(m.real, m.imag)}
@@ -187,37 +256,25 @@ export function ResultsPanel() {
                     <h4 className="text-xs font-medium text-text-secondary">
                       SWR vs Frequency
                     </h4>
-                    <div className="flex items-center gap-1.5">
-                      {s1pFile && (
-                        <button
-                          onClick={handleS1PClear}
-                          className="text-[10px] text-text-secondary hover:text-swr-bad transition-colors"
-                          title="Remove .s1p overlay"
-                        >
-                          {s1pFile.filename} x
-                        </button>
-                      )}
-                      <button
-                        onClick={handleS1PImport}
-                        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-text-secondary hover:text-text-primary hover:border-accent/50 transition-colors"
-                        title="Import .s1p file from NanoVNA"
-                      >
-                        .s1p
-                      </button>
-                    </div>
+                    {measuredControls}
                   </div>
+                  {measuredStatus}
                   <ChartExpandable
                     title="SWR vs Frequency"
                     expandedChildren={
-                      <div className="w-full h-full">
-                        <SWRChart
-                          data={result.frequency_data}
-                          onFrequencyClick={handleFreqClick}
-                          selectedIndex={selectedFreqIndex}
-                          s1pData={s1pFile?.data}
-                          matching={matching}
-                          heightClass="h-full"
-                        />
+                      <div className="w-full h-full flex flex-col gap-2">
+                        {measuredStatus}
+                        <div className="flex-1 min-h-0">
+                          <SWRChart
+                            data={result.frequency_data}
+                            onFrequencyClick={handleFreqClick}
+                            selectedIndex={selectedFreqIndex}
+                            s1pData={s1pFile?.data}
+                            matching={matching}
+                            feedChain={feedChain}
+                            heightClass="h-full"
+                          />
+                        </div>
                       </div>
                     }
                   >
@@ -227,6 +284,7 @@ export function ResultsPanel() {
                       selectedIndex={selectedFreqIndex}
                       s1pData={s1pFile?.data}
                       matching={matching}
+                      feedChain={feedChain}
                     />
                   </ChartExpandable>
                 </div>
@@ -234,18 +292,25 @@ export function ResultsPanel() {
 
               {resultsTab === "impedance" && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-medium text-text-secondary">
-                    Impedance vs Frequency
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-medium text-text-secondary">
+                      Impedance vs Frequency
+                    </h4>
+                    {measuredControls}
+                  </div>
+                  {measuredStatus}
                   <ChartExpandable
                     title="Impedance vs Frequency"
                     expandedChildren={
-                      <div className="w-full h-full">
-                        <ImpedanceChart data={result.frequency_data} matching={matching} heightClass="h-full" />
+                      <div className="w-full h-full flex flex-col gap-2">
+                        {measuredStatus}
+                        <div className="flex-1 min-h-0">
+                          <ImpedanceChart data={result.frequency_data} matching={matching} feedChain={feedChain} s1pData={s1pFile?.data} heightClass="h-full" />
+                        </div>
                       </div>
                     }
                   >
-                    <ImpedanceChart data={result.frequency_data} matching={matching} />
+                    <ImpedanceChart data={result.frequency_data} matching={matching} feedChain={feedChain} s1pData={s1pFile?.data} />
                   </ChartExpandable>
                 </div>
               )}
@@ -264,6 +329,7 @@ export function ResultsPanel() {
                           selectedIndex={selectedFreqIndex}
                           onFrequencyClick={handleFreqClick}
                           matching={matching}
+                          feedChain={feedChain}
                           size={600}
                           responsive
                         />
@@ -275,6 +341,7 @@ export function ResultsPanel() {
                       selectedIndex={selectedFreqIndex}
                       onFrequencyClick={handleFreqClick}
                       matching={matching}
+                      feedChain={feedChain}
                     />
                   </ChartExpandable>
                 </div>

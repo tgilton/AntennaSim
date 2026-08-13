@@ -13,8 +13,10 @@
 import { useMemo, useState, useCallback, useRef, useId } from "react";
 import type { FrequencyResult } from "../../api/nec";
 import { useUIStore } from "../../stores/uiStore";
-import { formatFrequency, formatImpedance, applyMatching, DEFAULT_MATCHING } from "../../utils/units";
+import { formatFrequency, formatImpedance, DEFAULT_MATCHING } from "../../utils/units";
 import type { MatchingConfig } from "../../utils/units";
+import type { FeedChainConfig } from "../../utils/transmissionLine";
+import { resolveMatch } from "../../utils/transmissionLine";
 
 interface SmithChartProps {
   data: FrequencyResult[];
@@ -30,6 +32,8 @@ interface SmithChartProps {
   responsive?: boolean;
   /** Matching config for impedance transformation */
   matching?: MatchingConfig;
+  /** When enabled, overrides `matching` with the transmission-line cascade */
+  feedChain?: FeedChainConfig;
 }
 
 /** Convert impedance Z to reflection coefficient Gamma */
@@ -166,9 +170,15 @@ export function SmithChart({
   onFrequencyClick,
   responsive = false,
   matching = DEFAULT_MATCHING,
+  feedChain,
 }: SmithChartProps) {
-  // Use feedline Z0 from matching config if no explicit z0 prop
-  const z0 = z0Prop ?? matching.feedlineZ0;
+  // Use feedline Z0 from matching config (or the feed chain's tap Z0) if no explicit z0 prop
+  const effectiveZ0 = useMemo(() => {
+    if (!feedChain?.enabled || data.length === 0) return matching.feedlineZ0;
+    const first = data[0]!;
+    return resolveMatch(first.frequency_mhz, first.impedance.real, first.impedance.imag, matching, feedChain).z0;
+  }, [data, matching, feedChain]);
+  const z0 = z0Prop ?? effectiveZ0;
   const theme = useUIStore((s) => s.theme);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -196,7 +206,7 @@ export function SmithChart({
   const gammaPoints = useMemo(
     () =>
       data.map((d) => {
-        const m = applyMatching(d.impedance.real, d.impedance.imag, matching);
+        const m = resolveMatch(d.frequency_mhz, d.impedance.real, d.impedance.imag, matching, feedChain);
         const g = zToGamma(m.real, m.imag, z0);
         return {
           gamma: g,
@@ -208,7 +218,7 @@ export function SmithChart({
           swr: m.swr,
         };
       }),
-    [data, z0, cx, cy, chartRadius, matching]
+    [data, z0, cx, cy, chartRadius, matching, feedChain]
   );
 
   // Build trajectory polyline
