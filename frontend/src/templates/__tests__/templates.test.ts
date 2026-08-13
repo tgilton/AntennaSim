@@ -25,10 +25,10 @@ function wireLength(w: WireGeometry): number {
 // ---------------------------------------------------------------------------
 
 describe("Template registry", () => {
-  it("has 20 templates with unique IDs", () => {
-    expect(templates).toHaveLength(20);
+  it("has 21 templates with unique IDs", () => {
+    expect(templates).toHaveLength(21);
     const ids = templates.map((t) => t.id);
-    expect(new Set(ids).size).toBe(20);
+    expect(new Set(ids).size).toBe(21);
   });
 
   it("getTemplate throws for unknown ID", () => {

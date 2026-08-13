@@ -23,6 +23,7 @@ import { magneticLoopTemplate } from "./magnetic-loop";
 import { elevatedQuarterwaveTemplate } from "./elevated-quarterwave";
 import { loopCounterpoiseVerticalTemplate } from "./loop-counterpoise-vertical";
 import { parasiticVerticalTemplate } from "./parasitic-vertical";
+import { greylineDxfTemplate } from "./greyline-dxf";
 
 /** All available templates, in display order */
 export const templates: AntennaTemplate[] = [
@@ -34,6 +35,7 @@ export const templates: AntennaTemplate[] = [
   elevatedQuarterwaveTemplate,
   loopCounterpoiseVerticalTemplate,
   verticalTemplate,
+  greylineDxfTemplate,
   jPoleTemplate,
   slimJimTemplate,
   // End-fed / multiband
